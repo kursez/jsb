@@ -20,7 +20,8 @@
 
     var jsb = {
         prefix: 'jsb_',
-        prefix_regexp: /jsb_([^\s]+)/,
+        prefix_regexp: /jsb_([^\s]+)/g,
+        awaitRegex: /[\S]+_await$/,
 
         handlers: {},
         listeners: [],
@@ -50,28 +51,50 @@
         /**
          * Apply all behaviours on a given dom_element and it's children.
          *
-         * @param {HTMLElement} dom_element
+         * @param parent_dom_element
+         * @param applyToAwaitBehaviour
          */
-        applyBehaviour: function(parent_dom_element) {
+        applyBehaviour: function(parent_dom_element, applyToAwaitBehaviour) {
             var dom_elements = this.getJsbElementsInDomElement(parent_dom_element);
             var dom_elements_length = dom_elements.length;
             var dom_element = null;
-            var key = null;
-            var key_match = null;
+            var class_match = null;
+            var current_match = null;
+            var class_match_length = 0;
+            var class_match_tracker = 0;
+            var is_await_handler = false;
+            var behaviour_name = null;
+
+            if (typeof applyToAwaitBehaviour === 'undefined') {
+                applyToAwaitBehaviour = false;
+            }
 
             for (var i = 0; i < dom_elements_length; i++) {
                 dom_element = dom_elements[i];
-                this.removeClassFromElement(dom_element, this.prefix);
 
-                do {
-                    key_match = dom_element.className.match(this.prefix_regexp);
-                    if (key_match) {
-                        key = key_match[1];
-                        this.callHandler(key, dom_element);
-                        this.removeClassFromElement(dom_element, this.prefix + key);
+                class_match = dom_element.className.match(this.prefix_regexp);
+                class_match_length = class_match.length;
+                class_match_tracker = 0;
+
+                for (var j = 0; j < class_match_length; j+=1) {
+                    current_match = class_match[j].substring(4);
+                    behaviour_name = current_match;
+                    is_await_handler = this.awaitRegex.test(current_match);
+
+                    if ((!is_await_handler) || applyToAwaitBehaviour) {
+                        if (is_await_handler) {
+                            behaviour_name = current_match.substring(0, behaviour_name.length - 6);
+                        }
+
+                        class_match_tracker += 1;
+                        this.callHandler(behaviour_name, dom_element);
+                        this.removeClassFromElement(dom_element, this.prefix + current_match);
                     }
-                } while(key_match);
+                }
 
+                if (class_match_tracker === class_match_length) {
+                    this.removeClassFromElement(dom_element, this.prefix);
+                }
             }
 
             this.fireEvent('Jsb::BEHAVIOURS_APPLIED');
@@ -79,8 +102,9 @@
 
         /**
          * Fires an event with the given name and values.
-         * @param {String} name
-         * @param {Object} [values={}]
+         * @param name
+         * @param values
+         * @param sticky
          */
         fireEvent: function(name, values, sticky) {
             values = values || {};
